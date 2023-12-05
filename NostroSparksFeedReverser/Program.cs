@@ -1,106 +1,131 @@
-﻿// See https://aka.ms/new-console-template for more information
-using System.Text;
-using System.Text.Json;
-using System.Xml;
-
-if (args?.Length > 0)
+﻿
+try
 {
-    string logFilePath = "Logs/CashFlowExtracts.txt";
-    string[] logFileCashFlows = await File.ReadAllLinesAsync(logFilePath);
+    var config = GetConfiguration();
+    Log.Logger = GetLogger(config);
 
-    foreach (var logFileCashFlow in logFileCashFlows)
+    await CoordinateReversalsAsync(args, config["SparksUrl"]!);
+}
+catch (Exception ex)
+{
+    Log.Fatal(messageTemplate: $"Error processing reversals: {ex.Message}.");
+}
+finally
+{
+    Log.CloseAndFlush();
+}
+
+#region Config
+
+static IConfigurationRoot GetConfiguration()
+{
+    return new ConfigurationBuilder()
+        .SetBasePath(Directory.GetCurrentDirectory())
+        .AddJsonFile(path: "appsettings.json", optional: false, reloadOnChange: true)
+        .Build();
+}
+
+static Logger GetLogger(IConfiguration config)
+{
+    return new LoggerConfiguration()
+        .ReadFrom.Configuration(config)
+        .CreateLogger();
+}
+
+#endregion
+
+static async Task CoordinateReversalsAsync(ICollection<string> args, string cashFlowUrl)
+{
+    if (args?.Count > 0)
     {
         XmlDocument xmlDoc = new();
-        xmlDoc.LoadXml(logFileCashFlow);
 
-        XmlNode amountNode = xmlDoc.SelectSingleNode("//Amount")!;
-        if (amountNode != null)
+        foreach (var logFileCashFlow in await File.ReadAllLinesAsync(Resrc.LogFile))
         {
-            string amountAsText = amountNode.InnerText;
-            Console.WriteLine("Original Amount: " + amountAsText);
+            xmlDoc.LoadXml(logFileCashFlow);
 
-            if (decimal.TryParse(amountAsText, out decimal amount))
-            {
-                decimal newAmount = amount * -1;
-                amountNode.InnerText = newAmount.ToString();
-                Console.WriteLine("Updated Amount: " + newAmount);
-            }
+            TransformAmountTag(xmlDoc);
 
-            Console.WriteLine("Modified XML:");
-            PrettyPrintXml(xmlDoc);
-            Console.WriteLine();
+            TransformSpxAttribute(xmlDoc);
+
+            await PostToApiAsync(cashFlow: new SparksMoneyFlow(xmlDoc.OuterXml), cashFlowUrl);
+
+            xmlDoc.RemoveAll();
         }
-        else
-        {
-            Console.WriteLine("Amount node not found.");
-        }
-
-        XmlNode trackingNode = xmlDoc.SelectSingleNode("//Tracking")!;
-        if (trackingNode != null)
-        {
-            XmlAttribute apfoTranIdAttribute = trackingNode.Attributes?["APFOTRANID"]!;
-            if (apfoTranIdAttribute != null)
-            {
-                Console.WriteLine("Original APFOTRANID: " + apfoTranIdAttribute.Value);
-                apfoTranIdAttribute.Value = GenerateFoTranId();
-                Console.WriteLine("New APFOTRANID: " + apfoTranIdAttribute.Value);
-
-                Console.WriteLine("Modified XML:");
-                PrettyPrintXml(xmlDoc);
-                Console.WriteLine();
-            }
-            else
-            {
-                Console.WriteLine("APFOTRANID attribute not found in the Tracking node.");
-            }
-        }
-        else
-        {
-            Console.WriteLine("Tracking node not found.");
-        }
-
-        await PostToApiAsync(new SparksMoneyFlow(xmlDoc.OuterXml));
     }
 }
-else
+
+static void TransformSpxAttribute(XmlDocument xmlDoc)
 {
-    Console.WriteLine("No cash flow identifiers received.");
+    XmlNode? trackingNode = xmlDoc.SelectSingleNode(xpath: "//Tracking")!;
+    XmlAttribute? apfoTranIdAttribute = GetApfoTranIdAttribute(trackingNode);
+
+    if (apfoTranIdAttribute != null)
+    {
+        apfoTranIdAttribute.Value = GenerateFoTranId();
+
+        Log.Information($"Modified XML: \n{GetPrettifiedXml(xmlDoc)}.\n");
+    }
+}
+
+static XmlAttribute? GetApfoTranIdAttribute(XmlNode trackingNode) =>
+    trackingNode?.Attributes?["APFOTRANID"];
+
+static void TransformAmountTag(XmlDocument xmlDoc)
+{
+    XmlNode amountNode = xmlDoc.SelectSingleNode(xpath: "//Amount")!;
+
+    if (amountNode != null && 
+        decimal.TryParse(amountNode.InnerText, NumberStyles.Any, CultureInfo.InvariantCulture, out var amount))
+    {
+        decimal newAmount = amount * (-1);
+        amountNode.InnerText = newAmount.ToString();
+
+        Log.Information($"Modified XML: \n{GetPrettifiedXml(xmlDoc)}.\n");
+    }
 }
 
 static string GenerateFoTranId() =>
     string.Concat("SPX_", Guid.NewGuid().ToString().AsSpan(start: 0, length: 16));
 
-static void PrettyPrintXml(XmlDocument xmlDoc)
+static string GetPrettifiedXml(XmlNode xmlNode)
 {
-    XmlWriterSettings settings = new()
+    using StringWriter stringWriter = new();
+    XmlWriterSettings xmlWriterSettings = new()
     {
         Indent = true,
-        IndentChars = "\t", 
-        NewLineChars = "\n",  
+        IndentChars = "    ",
+        NewLineChars = "\n",
         NewLineHandling = NewLineHandling.Replace
     };
 
-    using var writer = XmlWriter.Create(Console.Out, settings);
+    using (var xmlWriter = XmlWriter.Create(stringWriter, xmlWriterSettings))
+    {
+        xmlNode.WriteTo(xmlWriter);
+    }
 
-    xmlDoc.WriteTo(writer);
+    return stringWriter.ToString();
 }
 
-async Task PostToApiAsync(SparksMoneyFlow cashFlow)
+static async Task PostToApiAsync(SparksMoneyFlow cashFlow, string cashFlowsUrl) =>
+    await MoneyFlowDispatch.PostToApiAsync(cashFlow, cashFlowsUrl);
+
+class MoneyFlowDispatch : IDisposable
 {
-    const string apiUrl = "sparks_api_url";
+    private static readonly HttpClient _httpClient;
 
-    using HttpClient httpClient = new();
-    StringContent content = new(JsonSerializer.Serialize(cashFlow), Encoding.UTF8, "application/xml");
-    HttpResponseMessage response = await httpClient.PostAsync(apiUrl, content);
+    static MoneyFlowDispatch() => _httpClient = new();
 
-    if (response.IsSuccessStatusCode)
+    static internal async Task PostToApiAsync(SparksMoneyFlow cashFlow, string cashFlowsUrl)
     {
-        Console.WriteLine("POST request successful");
+        StringContent content = new(JsonSerializer.Serialize(cashFlow), Encoding.UTF8, "application/json");
+        HttpResponseMessage response = await _httpClient.PostAsync(cashFlowsUrl, content);
+
+        response.EnsureSuccessStatusCode();
     }
-    else
+
+    public void Dispose()
     {
-        Console.WriteLine($"POST request failed with status code {response.StatusCode}");
+        _httpClient.Dispose();
     }
 }
-
-public record SparksMoneyFlow(string Message);
