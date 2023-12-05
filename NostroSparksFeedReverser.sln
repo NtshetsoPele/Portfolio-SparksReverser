@@ -10,6 +10,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 		Instructions.txt = Instructions.txt
 	EndProjectSection
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SettlementIdExtracter", "SettlementIdExtracter\SettlementIdExtracter.csproj", "{9F423989-0FB9-4949-8FF1-2DF4665FC87B}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -20,6 +22,10 @@ Global
 		{B465B5F9-4A17-4FFD-AEF8-DF20CABB3D89}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B465B5F9-4A17-4FFD-AEF8-DF20CABB3D89}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{B465B5F9-4A17-4FFD-AEF8-DF20CABB3D89}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9F423989-0FB9-4949-8FF1-2DF4665FC87B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9F423989-0FB9-4949-8FF1-2DF4665FC87B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9F423989-0FB9-4949-8FF1-2DF4665FC87B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9F423989-0FB9-4949-8FF1-2DF4665FC87B}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
