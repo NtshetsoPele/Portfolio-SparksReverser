@@ -1,0 +1,5 @@
+grep -E '.*SPX_[0-9a-zA-Z]{8}-[0-9a-zA-Z]{4}-[0-9a-zA-Z]{2}.*' 05-12-2023_NostroSparksFeedMiddleware_LogFileExtract.txt > CashFlowExtracts.txt
+sed -i 's/^                    <td>MqConnector::ReadMsg() response = //' CashFlowExtracts.txt
+sed -i 's/<\/td>$//' CashFlowExtracts.txt
+
+Change the Sparks Web Api Url

@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "NostroSparksFeedReverser": {
+      "commandName": "Project",
+      "commandLineArgs": "SPX_8f52e994-1b3a-40 SPX_c5ddc4a0-ccf3-4e"
+    }
+  }
+}
